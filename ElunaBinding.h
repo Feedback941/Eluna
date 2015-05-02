@@ -30,23 +30,39 @@ public:
         int functionReference;
         bool isTemporary;
         uint32 remainingShots;
-        Eluna& E;
+        uint32 uniqueId;
+        bool allowremoveall;
 
-        Binding(Eluna& _E, int funcRef, uint32 shots) :
+        
+        uint8 _regtype;
+        uint32 _id;
+        uint64 _guid;
+        uint32 _instanceId;
+        uint32 _evt;
+        int _funcref;
+
+        ElunaBind* B;
+
+        Binding(ElunaBind* _B, uint32 _uniqueId, int funcRef, uint32 shots, bool _allowremoveall) :
             functionReference(funcRef),
             isTemporary(shots != 0),
             remainingShots(shots),
-            E(_E)
+            uniqueId(_uniqueId),
+            allowremoveall(_allowremoveall),
+            B(_B)
         {
         }
 
-        // Remove our function from the registry when the Binding is deleted.
         ~Binding()
         {
-            luaL_unref(E.L, LUA_REGISTRYINDEX, functionReference);
+            // Remove our function from the registry when the Binding is deleted.
+            luaL_unref(B->E.L, LUA_REGISTRYINDEX, functionReference);
+
+            // Remove from unique map so this binding can no longer be removed through it's ID
+            B->E.regdata.erase(uniqueId);
         }
     };
-    typedef std::vector<Binding*> FunctionRefVector;
+    typedef std::vector<Binding> FunctionRefVector;
     typedef UNORDERED_MAP<int, FunctionRefVector> EventToFunctionsMap;
 
     Eluna& E;
@@ -63,6 +79,9 @@ public:
 
     // unregisters all registered functions and clears all registered events from the bindings
     virtual void Clear() { };
+
+    // unregisters a function by it's uniqueid
+    virtual void RemoveUnique(uint32 uniqueid) { };
 };
 
 template<typename T>
@@ -73,28 +92,40 @@ public:
     {
     }
 
+    void RemoveUnique(uint32 uniqueid) override
+    {
+        UNORDERED_MAP<uint32, Eluna::RegData>::const_iterator it = E.regdata.find(uniqueid);
+        if (it == E.regdata.end())
+            return;
+        const Eluna::RegData& data = it->second;
+
+        WriteGuard guard(GetLock());
+
+        FunctionRefVector& funcrefvec = Bindings[data._evt];
+        for (FunctionRefVector::const_iterator i = funcrefvec.begin(); i != funcrefvec.end(); ++i)
+        {
+            if ((*i).uniqueId == uniqueid)
+            {
+                funcrefvec.erase(i);
+                return;
+            }
+        }
+
+        if (Bindings[data._evt].empty())
+            Bindings.erase(data._evt);
+    }
+
     // unregisters all registered functions and clears all registered events from the bind std::maps (reset)
     void Clear() override
     {
         WriteGuard guard(GetLock());
-
-        for (EventToFunctionsMap::iterator itr = Bindings.begin(); itr != Bindings.end(); ++itr)
-        {
-            FunctionRefVector& funcrefvec = itr->second;
-            for (FunctionRefVector::iterator it = funcrefvec.begin(); it != funcrefvec.end(); ++it)
-                delete *it;
-            funcrefvec.clear();
-        }
         Bindings.clear();
     }
 
     void Clear(uint32 event_id)
     {
         WriteGuard guard(GetLock());
-
-        for (FunctionRefVector::iterator itr = Bindings[event_id].begin(); itr != Bindings[event_id].end(); ++itr)
-            delete *itr;
-        Bindings[event_id].clear();
+        Bindings.erase(event_id);
     }
 
     // Pushes the function references and updates the counters on the binds and erases them if the counter would reach 0
@@ -105,18 +136,15 @@ public:
         for (FunctionRefVector::iterator it = Bindings[event_id].begin(); it != Bindings[event_id].end();)
         {
             FunctionRefVector::iterator it_old = it++;
-            Binding* binding = (*it_old);
+            Binding& binding = (*it_old);
 
-            lua_rawgeti(L, LUA_REGISTRYINDEX, binding->functionReference);
+            lua_rawgeti(L, LUA_REGISTRYINDEX, binding.functionReference);
 
-            if (binding->isTemporary)
+            if (binding.isTemporary)
             {
-                binding->remainingShots--;
-                if (binding->remainingShots == 0)
-                {
-                    delete binding;
+                binding.remainingShots--;
+                if (binding.remainingShots == 0)
                     Bindings[event_id].erase(it_old);
-                }
             }
         }
 
@@ -124,10 +152,10 @@ public:
             Bindings.erase(event_id);
     };
 
-    void Insert(int eventId, int funcRef, uint32 shots) // Inserts a new registered event
+    void Insert(uint32 uniqueid, int eventId, int funcRef, uint32 shots, bool allowremoveall) // Inserts a new registered event
     {
         WriteGuard guard(GetLock());
-        Bindings[eventId].push_back(new Binding(E, funcRef, shots));
+        Bindings[eventId].push_back(Binding(this, uniqueid, funcRef, shots, allowremoveall));
     }
 
     // Checks if there are events for ID
@@ -158,33 +186,42 @@ public:
     {
     }
 
+    void RemoveUnique(uint32 uniqueid) override
+    {
+        UNORDERED_MAP<uint32, Eluna::RegData>::const_iterator it = E.regdata.find(uniqueid);
+        if (it == E.regdata.end())
+            return;
+        const Eluna::RegData& data = it->second;
+
+        WriteGuard guard(GetLock());
+        FunctionRefVector& funcrefvec = Bindings[data._id][data._evt];
+        for (FunctionRefVector::const_iterator i = funcrefvec.begin(); i != funcrefvec.end(); ++i)
+        {
+            if ((*i).uniqueId == uniqueid)
+            {
+                funcrefvec.erase(i);
+                return;
+            }
+        }
+
+        if (Bindings[data._id][data._evt].empty())
+            Bindings[data._id].erase(data._evt);
+
+        if (Bindings[data._id].empty())
+            Bindings.erase(data._id);
+    }
+
     // unregisters all registered functions and clears all registered events from the bindmap
     void Clear() override
     {
         WriteGuard guard(GetLock());
-
-        for (EntryToEventsMap::iterator itr = Bindings.begin(); itr != Bindings.end(); ++itr)
-        {
-            EventToFunctionsMap& funcmap = itr->second;
-            for (EventToFunctionsMap::iterator it = funcmap.begin(); it != funcmap.end(); ++it)
-            {
-                FunctionRefVector& funcrefvec = it->second;
-                for (FunctionRefVector::iterator i = funcrefvec.begin(); i != funcrefvec.end(); ++i)
-                    delete *i;
-                funcrefvec.clear();
-            }
-            funcmap.clear();
-        }
         Bindings.clear();
     }
 
     void Clear(uint32 entry, uint32 event_id)
     {
         WriteGuard guard(GetLock());
-
-        for (FunctionRefVector::iterator itr = Bindings[entry][event_id].begin(); itr != Bindings[entry][event_id].end(); ++itr)
-            delete *itr;
-        Bindings[entry][event_id].clear();
+        Bindings[entry].erase(event_id);
     }
 
     // Pushes the function references and updates the counters on the binds and erases them if the counter would reach 0
@@ -195,18 +232,15 @@ public:
         for (FunctionRefVector::iterator it = Bindings[entry][event_id].begin(); it != Bindings[entry][event_id].end();)
         {
             FunctionRefVector::iterator it_old = it++;
-            Binding* binding = (*it_old);
+            Binding& binding = (*it_old);
 
-            lua_rawgeti(L, LUA_REGISTRYINDEX, binding->functionReference);
+            lua_rawgeti(L, LUA_REGISTRYINDEX, binding.functionReference);
 
-            if (binding->isTemporary)
+            if (binding.isTemporary)
             {
-                binding->remainingShots--;
-                if (binding->remainingShots == 0)
-                {
-                    delete binding;
+                binding.remainingShots--;
+                if (binding.remainingShots == 0)
                     Bindings[entry][event_id].erase(it_old);
-                }
             }
         }
 
@@ -217,10 +251,10 @@ public:
             Bindings.erase(entry);
     };
 
-    void Insert(uint32 entryId, int eventId, int funcRef, uint32 shots) // Inserts a new registered event
+    void Insert(uint32 uniqueid, uint32 entryId, int eventId, int funcRef, uint32 shots, bool allowremoveall) // Inserts a new registered event
     {
         WriteGuard guard(GetLock());
-        Bindings[entryId][eventId].push_back(new Binding(E, funcRef, shots));
+        Bindings[entryId][eventId].push_back(Binding(this, uniqueid, funcRef, shots, allowremoveall));
     }
 
     // Returns true if the entry has registered binds
@@ -265,39 +299,45 @@ public:
     {
     }
 
+    void RemoveUnique(uint32 uniqueid) override
+    {
+        UNORDERED_MAP<uint32, Eluna::RegData>::const_iterator it = E.regdata.find(uniqueid);
+        if (it == E.regdata.end())
+            return;
+        const Eluna::RegData& data = it->second;
+
+        WriteGuard guard(GetLock());
+        FunctionRefVector& funcrefvec = Bindings[data._guid][data._instanceId][data._evt];
+        for (FunctionRefVector::const_iterator i = funcrefvec.begin(); i != funcrefvec.end(); ++i)
+        {
+            if ((*i).uniqueId == uniqueid)
+            {
+                funcrefvec.erase(i);
+                return;
+            }
+        }
+
+        if (Bindings[data._guid][data._instanceId][data._evt].empty())
+            Bindings[data._guid][data._instanceId].erase(data._evt);
+
+        if (Bindings[data._guid][data._instanceId].empty())
+            Bindings[data._guid].erase(data._instanceId);
+
+        if (Bindings[data._guid].empty())
+            Bindings.erase(data._guid);
+    }
+
     // unregisters all registered functions and clears all registered events from the bindmap
     void Clear() override
     {
         WriteGuard guard(GetLock());
-
-        for (GUIDToInstancesMap::iterator iter = Bindings.begin(); iter != Bindings.end(); ++iter)
-        {
-            InstanceToEventsMap& eventsMap = iter->second;
-            for (InstanceToEventsMap::iterator itr = eventsMap.begin(); itr != eventsMap.end(); ++itr)
-            {
-                EventToFunctionsMap& funcmap = itr->second;
-                for (EventToFunctionsMap::iterator it = funcmap.begin(); it != funcmap.end(); ++it)
-                {
-                    FunctionRefVector& funcrefvec = it->second;
-                    for (FunctionRefVector::iterator i = funcrefvec.begin(); i != funcrefvec.end(); ++i)
-                        delete *i;
-                    funcrefvec.clear();
-                }
-                funcmap.clear();
-            }
-            eventsMap.clear();
-        }
         Bindings.clear();
     }
 
     void Clear(uint64 guid, uint32 instanceId, uint32 event_id)
     {
         WriteGuard guard(GetLock());
-        FunctionRefVector& v = Bindings[guid][instanceId][event_id];
-
-        for (FunctionRefVector::iterator itr = v.begin(); itr != v.end(); ++itr)
-            delete *itr;
-        v.clear();
+        Bindings[guid][instanceId].erase(event_id);
     }
 
     // Pushes the function references and updates the counters on the binds and erases them if the counter would reach 0
@@ -309,18 +349,15 @@ public:
         for (FunctionRefVector::iterator it = v.begin(); it != v.end();)
         {
             FunctionRefVector::iterator it_old = it++;
-            Binding* binding = (*it_old);
+            Binding& binding = (*it_old);
 
-            lua_rawgeti(L, LUA_REGISTRYINDEX, binding->functionReference);
+            lua_rawgeti(L, LUA_REGISTRYINDEX, binding.functionReference);
 
-            if (binding->isTemporary)
+            if (binding.isTemporary)
             {
-                binding->remainingShots--;
-                if (binding->remainingShots == 0)
-                {
-                    delete binding;
+                binding.remainingShots--;
+                if (binding.remainingShots == 0)
                     v.erase(it_old);
-                }
             }
         }
 
@@ -334,10 +371,10 @@ public:
             Bindings.erase(guid);
     };
 
-    void Insert(uint64 guid, uint32 instanceId, int eventId, int funcRef, uint32 shots) // Inserts a new registered event
+    void Insert(uint32 uniqueid, uint64 guid, uint32 instanceId, int eventId, int funcRef, uint32 shots, bool allowremoveall) // Inserts a new registered event
     {
         WriteGuard guard(GetLock());
-        Bindings[guid][instanceId][eventId].push_back(new Binding(E, funcRef, shots));
+        Bindings[guid][instanceId][eventId].push_back(Binding(this, uniqueid, funcRef, shots, allowremoveall));
     }
 
     // Returns true if the entry has registered binds

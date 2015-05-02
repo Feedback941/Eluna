@@ -19,6 +19,7 @@
 #include "Weather.h"
 #include "World.h"
 #include "Hooks.h"
+#include "ElunaUtility.h"
 
 extern "C"
 {
@@ -272,7 +273,31 @@ public:
     bool ShouldReload() const { return reload; }
     bool IsEnabled() const { return enabled && IsInitialized(); }
     bool HasLuaState() const { return L != NULL; }
-    void Register(uint8 reg, uint32 id, uint64 guid, uint32 instanceId, uint32 evt, int func, uint32 shots);
+    void Register(uint8 reg, uint32 id, uint64 guid, uint32 instanceId, uint32 evt, int func, uint32 shots, bool allowremoveall = false);
+
+    struct RegData
+    {
+        RegData()
+        {
+        }
+        RegData(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, uint32 evt, int funcref) :
+            _regtype(regtype), _id(id), _guid(guid), _instanceId(instanceId), _evt(evt), _funcref(funcref)
+        {
+        }
+        uint8 _regtype;
+        uint32 _id;
+        uint64 _guid;
+        uint32 _instanceId;
+        uint32 _evt;
+        int _funcref;
+    };
+    UNORDERED_MAP<uint32, RegData> regdata;
+    uint32 nextuniqueid = 0;
+    uint32 GenerateUniqueId(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, uint32 evt, int funcref)
+    {
+        regdata[nextuniqueid] = RegData(regtype, id, guid, instanceId, evt, funcref);
+        return nextuniqueid++;
+    }
 
     // Non-static pushes, to be used in hooks.
     // These just call the correct static version with the main thread's Lua state.

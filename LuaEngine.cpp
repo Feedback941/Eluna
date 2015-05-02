@@ -907,14 +907,14 @@ ElunaObject* Eluna::CHECKTYPE(lua_State* luastate, int narg, const char* tname, 
 }
 
 // Saves the function reference ID given to the register type's store for given entry under the given event
-void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, uint32 evt, int functionRef, uint32 shots)
+void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, uint32 evt, int functionRef, uint32 shots, bool allowremoveall)
 {
     switch (regtype)
     {
         case Hooks::REGTYPE_SERVER:
             if (evt < Hooks::SERVER_EVENT_COUNT)
             {
-                ServerEventBindings->Insert(evt, functionRef, shots);
+                ServerEventBindings->Insert(GenerateUniqueId(regtype, id, guid, instanceId, evt, functionRef), evt, functionRef, shots, allowremoveall);
                 return;
             }
             break;
@@ -922,7 +922,7 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
         case Hooks::REGTYPE_PLAYER:
             if (evt < Hooks::PLAYER_EVENT_COUNT)
             {
-                PlayerEventBindings->Insert(evt, functionRef, shots);
+                PlayerEventBindings->Insert(GenerateUniqueId(regtype, id, guid, instanceId, evt, functionRef), evt, functionRef, shots, allowremoveall);
                 return;
             }
             break;
@@ -930,7 +930,7 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
         case Hooks::REGTYPE_GUILD:
             if (evt < Hooks::GUILD_EVENT_COUNT)
             {
-                GuildEventBindings->Insert(evt, functionRef, shots);
+                GuildEventBindings->Insert(GenerateUniqueId(regtype, id, guid, instanceId, evt, functionRef), evt, functionRef, shots, allowremoveall);
                 return;
             }
             break;
@@ -938,7 +938,7 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
         case Hooks::REGTYPE_GROUP:
             if (evt < Hooks::GROUP_EVENT_COUNT)
             {
-                GroupEventBindings->Insert(evt, functionRef, shots);
+                GroupEventBindings->Insert(GenerateUniqueId(regtype, id, guid, instanceId, evt, functionRef), evt, functionRef, shots, allowremoveall);
                 return;
             }
             break;
@@ -946,7 +946,7 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
         case Hooks::REGTYPE_VEHICLE:
             if (evt < Hooks::VEHICLE_EVENT_COUNT)
             {
-                VehicleEventBindings->Insert(evt, functionRef, shots);
+                VehicleEventBindings->Insert(GenerateUniqueId(regtype, id, guid, instanceId, evt, functionRef), evt, functionRef, shots, allowremoveall);
                 return;
             }
             break;
@@ -954,7 +954,7 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
         case Hooks::REGTYPE_BG:
             if (evt < Hooks::BG_EVENT_COUNT)
             {
-                BGEventBindings->Insert(evt, functionRef, shots);
+                BGEventBindings->Insert(GenerateUniqueId(regtype, id, guid, instanceId, evt, functionRef), evt, functionRef, shots, allowremoveall);
                 return;
             }
             break;
@@ -969,7 +969,7 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
                     return;
                 }
 
-                PacketEventBindings->Insert(id, evt, functionRef, shots);
+                PacketEventBindings->Insert(GenerateUniqueId(regtype, id, guid, instanceId, evt, functionRef), id, evt, functionRef, shots, allowremoveall);
                 return;
             }
             break;
@@ -986,12 +986,12 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
                         return;
                     }
 
-                    CreatureEventBindings->Insert(id, evt, functionRef, shots);
+                    CreatureEventBindings->Insert(GenerateUniqueId(regtype, id, guid, instanceId, evt, functionRef), id, evt, functionRef, shots, allowremoveall);
                 }
                 else
                 {
                     ASSERT(guid != 0);
-                    CreatureUniqueBindings->Insert(guid, instanceId, evt, functionRef, shots);
+                    CreatureUniqueBindings->Insert(GenerateUniqueId(regtype, id, guid, instanceId, evt, functionRef), guid, instanceId, evt, functionRef, shots, allowremoveall);
                 }
                 return;
             }
@@ -1007,7 +1007,7 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
                     return;
                 }
 
-                CreatureGossipBindings->Insert(id, evt, functionRef, shots);
+                CreatureGossipBindings->Insert(GenerateUniqueId(regtype, id, guid, instanceId, evt, functionRef), id, evt, functionRef, shots, allowremoveall);
                 return;
             }
             break;
@@ -1022,7 +1022,7 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
                     return;
                 }
 
-                GameObjectEventBindings->Insert(id, evt, functionRef, shots);
+                GameObjectEventBindings->Insert(GenerateUniqueId(regtype, id, guid, instanceId, evt, functionRef), id, evt, functionRef, shots, allowremoveall);
                 return;
             }
             break;
@@ -1037,7 +1037,7 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
                     return;
                 }
 
-                GameObjectGossipBindings->Insert(id, evt, functionRef, shots);
+                GameObjectGossipBindings->Insert(GenerateUniqueId(regtype, id, guid, instanceId, evt, functionRef), id, evt, functionRef, shots, allowremoveall);
                 return;
             }
             break;
@@ -1052,7 +1052,7 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
                     return;
                 }
 
-                ItemEventBindings->Insert(id, evt, functionRef, shots);
+                ItemEventBindings->Insert(GenerateUniqueId(regtype, id, guid, instanceId, evt, functionRef), id, evt, functionRef, shots, allowremoveall);
                 return;
             }
             break;
@@ -1067,7 +1067,7 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
                     return;
                 }
 
-                ItemGossipBindings->Insert(id, evt, functionRef, shots);
+                ItemGossipBindings->Insert(GenerateUniqueId(regtype, id, guid, instanceId, evt, functionRef), id, evt, functionRef, shots, allowremoveall);
                 return;
             }
             break;
@@ -1075,7 +1075,7 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
         case Hooks::REGTYPE_PLAYER_GOSSIP:
             if (evt < Hooks::GOSSIP_EVENT_COUNT)
             {
-                playerGossipBindings->Insert(id, evt, functionRef, shots);
+                playerGossipBindings->Insert(GenerateUniqueId(regtype, id, guid, instanceId, evt, functionRef), id, evt, functionRef, shots, allowremoveall);
                 return;
             }
             break;

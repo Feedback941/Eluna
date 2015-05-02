@@ -54,6 +54,7 @@ ElunaGlobal::ElunaRegister GlobalMethods[] =
     { "RegisterItemGossipEvent", &LuaGlobalFunctions::RegisterItemGossipEvent },               // RegisterItemGossipEvent(entry, event, function)
     { "RegisterPlayerGossipEvent", &LuaGlobalFunctions::RegisterPlayerGossipEvent },           // RegisterPlayerGossipEvent(menu_id, event, function)
     { "RegisterBGEvent", &LuaGlobalFunctions::RegisterBGEvent },                               // RegisterBGEvent(event, function)
+    { "RemoveRegisteredEvent", &LuaGlobalFunctions::RemoveRegisteredEvent },                   // RemoveRegisteredEvent(uniqueid)
 
     { "ClearBattleGroundEvents", &LuaGlobalFunctions::ClearBattleGroundEvents },
     { "ClearCreatureEvents", &LuaGlobalFunctions::ClearCreatureEvents },

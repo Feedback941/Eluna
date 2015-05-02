@@ -1054,6 +1054,16 @@ namespace LuaGlobalFunctions
         return 0;
     }
 
+    int RemoveRegisteredEvent(Eluna* E, lua_State* L)
+    {
+        uint32 uniqueid = Eluna::CHECKVAL<uint32>(L, 1);
+
+        UNORDERED_MAP<uint32, Eluna::RegData>::const_iterator it = E->regdata.find(uniqueid);
+        if (it == E->regdata.end())
+            return 0;
+        return 0;
+    }
+
     /**
      * Reloads the Lua engine.
      */
